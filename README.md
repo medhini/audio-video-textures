@@ -1,3 +1,3 @@
-# Audio-conditioned video texture generation
+# Audio-Conditioned Video Texture Generation
 
 Code coming soon!
