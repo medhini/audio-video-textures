@@ -26,11 +26,8 @@ import torchvision.io as io
 from train import train
 
 from validate import validate
-from dataset import (
-    VideoFrames,
-    AudioVideoSegments,
-    AudioVideoPoseSegments,
-)
+from dataset import AudioVideoSegments
+
 from models import (
     ContrastiveFramePrediction,
     ModelBuilder,
@@ -50,9 +47,9 @@ parser.add_argument(
 parser.add_argument(
     "--model_type",
     "-m",
-    default=2,
+    default=1,
     type=int,
-    help="(1) Video Frames (2) Video Segments",
+    help="(1) Video Textures (2) Audio Video Textures",
 )
 parser.add_argument(
     "--vdata", "-vdata", default=None, type=str, help="Path to video dataset"
@@ -102,7 +99,11 @@ parser.add_argument(
     help="Interpolate frames at eval",
 )
 parser.add_argument(
-    "--img_size", "-size", default=224, type=int, help="resize image to this size",
+    "--img_size",
+    "-size",
+    default=224,
+    type=int,
+    help="resize image to this size",
 )
 parser.add_argument(
     "--n_negs",
@@ -300,21 +301,18 @@ def main(args, video_name, itr=0):
 
     if args.visualize_evaluate:
         # create validation loader
-        if args.model_type == 1:
-            dataset_val = VideoFrames(args, video_name, split="val")
-        else:
-            dataset_val = AudioVideoSegments(args, video_name, split="val")
+        dataset_val = AudioVideoSegments(args, video_name, split="val")
 
         val_loader = torch.utils.data.DataLoader(
-            dataset_val, batch_size=3, shuffle=False, num_workers=0, drop_last=False,
+            dataset_val,
+            batch_size=3,
+            shuffle=False,
+            num_workers=0,
+            drop_last=False,
         )
     elif args.evaluate == False:  # Train
-        if args.model_type == 1:
-            dataset_train = VideoFrames(args, video_name, split="train")
-        elif args.model_type in (2, 3, 4, 5):
-            dataset_train = AudioVideoSegments(args, video_name, split="train")
-        else:
-            dataset_train = AudioVideoPoseSegments(args, video_name, split="train")
+        dataset_train = AudioVideoSegments(args, video_name, split="train")
+
         # create training loader
         train_loader = torch.utils.data.DataLoader(
             dataset_train,
@@ -326,40 +324,33 @@ def main(args, video_name, itr=0):
 
     # create model
     print("=> creating model '{}'".format(args.model_type))
-    if args.model_type == 1:
-        builder = ModelBuilder()
-        base_enc_model, fc_dim = builder.build_network(arch=args.enc_arch)
-        model = ContrastiveFramePrediction(
-            base_enc_model, fc_dim, args.temp, args.window, args.threshold, args.l2
-        )
-    elif args.model_type == 2 or args.model_type == 3:
-        # Resnet 3D model
-        builder = ModelBuilder3D()
-        q_image_enc_model, fc_dim = builder.build_network(
-            arch=args.enc_arch, img_size=args.size, window=args.window
-        )
-        t_image_enc_model, fc_dim = builder.build_network(
-            arch=args.enc_arch, img_size=args.size, window=args.window
-        )
+    # Resnet 3D model
+    builder = ModelBuilder3D()
+    q_image_enc_model, fc_dim = builder.build_network(
+        arch=args.enc_arch, img_size=args.size, window=args.window
+    )
+    t_image_enc_model, fc_dim = builder.build_network(
+        arch=args.enc_arch, img_size=args.size, window=args.window
+    )
 
-        # VGGish Model
-        audio_enc_model = VGGish()
-        audio_enc_model.load_state_dict(torch.load("pytorch_vggish.pth"))
+    # VGGish Model
+    audio_enc_model = VGGish()
+    audio_enc_model.load_state_dict(torch.load("pytorch_vggish.pth"))
 
-        model = ContrastivePredictionTemporal(
-            q_image_enc_model,
-            t_image_enc_model,
-            audio_enc_model,
-            args.model_type,
-            fc_dim,
-            args.temp,
-            args.window,
-            args.stride,
-            args.threshold,
-            mini_batchsize=args.mini_batchsize,
-            enc_arch=args.enc_arch,
-            img_size=args.img_size,
-        )
+    model = ContrastivePredictionTemporal(
+        q_image_enc_model,
+        t_image_enc_model,
+        audio_enc_model,
+        args.model_type,
+        fc_dim,
+        args.temp,
+        args.window,
+        args.stride,
+        args.threshold,
+        mini_batchsize=args.mini_batchsize,
+        enc_arch=args.enc_arch,
+        img_size=args.img_size,
+    )
 
     # optionally resume from a checkpoint
     if args.resume:
@@ -458,7 +449,14 @@ def main(args, video_name, itr=0):
 
     for epoch in range(args.start_epoch, args.epochs):
         # train for one epoch
-        loss = train(train_loader, model, optimizer, args, epoch, tb_logger,)
+        loss = train(
+            train_loader,
+            model,
+            optimizer,
+            args,
+            epoch,
+            tb_logger,
+        )
 
         # remember best loss and save checkpoint
         is_best = loss < best_loss
